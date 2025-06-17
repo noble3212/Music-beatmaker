@@ -6,43 +6,34 @@ from scipy.io.wavfile import write
 from pydub import AudioSegment
 from pydub.playback import play
 import pygame
-import mido
 import os
+import time
 
 # Initialize pygame mixer
 pygame.mixer.init()
-#kick = pygame.mixer.Sound("sounds/mixkit-pulsating-bass-transition-2295.wav")
-#snare = pygame.mixer.Sound("sounds/mixkit-knocking-sub-bass-2300.wav")
-#hihat = pygame.mixer.Sound("sounds/nice-bass-drum-sound-a-key-19-Ru1.wav")
 
-# Constants
 SAMPLE_RATE = 44100
 
-# Load default drum samples
 samples = {
     "Kick": "sounds/kick.wav",
     "Snare": "sounds/snare.wav",
     "HiHat": "sounds/hihat.wav"
 }
 
-# Play sample using pygame
 def play_sample(sample_name):
     pygame.mixer.Sound(samples[sample_name]).play()
 
-# Generate a sine wave
 def generate_sine_wave(freq, duration=1.0, volume=0.5):
     t = np.linspace(0, duration, int(SAMPLE_RATE * duration), False)
     wave = np.sin(freq * t * 2 * np.pi)
     audio = wave * (volume * 32767)
     return audio.astype(np.int16)
 
-# Play generated wave
 def play_synth():
     wave = generate_sine_wave(freq_slider.get(), duration=1.0)
     sd.play(wave, SAMPLE_RATE)
     write("synth.wav", SAMPLE_RATE, wave)
 
-# Record from microphone
 def record_audio():
     duration = 3  # seconds
     recorded = sd.rec(int(SAMPLE_RATE * duration), samplerate=SAMPLE_RATE, channels=1)
@@ -50,7 +41,6 @@ def record_audio():
     write("recorded.wav", SAMPLE_RATE, recorded)
     print("Recording saved as recorded.wav")
 
-# Save a simple beat
 def export_beat():
     beat = AudioSegment.silent(duration=2000)  # 2-second silent base
     beat = beat.overlay(AudioSegment.from_wav(samples["Kick"]), position=0)
@@ -58,7 +48,6 @@ def export_beat():
     beat.export("exported_beat.wav", format="wav")
     print("Beat exported as exported_beat.wav")
 
-# Upload a new sample
 def upload_sample(sample_type):
     file_path = filedialog.askopenfilename(
         title=f"Select a {sample_type} sample",
@@ -68,13 +57,51 @@ def upload_sample(sample_type):
         samples[sample_type] = file_path
         print(f"{sample_type} sample updated: {file_path}")
 
-# GUI
+# --- Step Sequencer Logic ---
+NUM_STEPS = 16
+instruments = list(samples.keys())
+sequence = [[0 for _ in range(NUM_STEPS)] for _ in instruments]
+
+def toggle_cell(row, col):
+    sequence[row][col] = 1 - sequence[row][col]
+    btn = grid_buttons[row][col]
+    btn.config(bg="green" if sequence[row][col] else "white")
+
+def play_sequence():
+    bpm = bpm_slider.get()
+    interval = 60 / bpm / 4  # 16 steps per bar (4 beats)
+    for step in range(NUM_STEPS):
+        for row, inst in enumerate(instruments):
+            if sequence[row][step]:
+                play_sample(inst)
+        root.update()
+        time.sleep(interval)
+
+# --- GUI ---
 root = tk.Tk()
 root.title("Python Beat Maker")
 
-# Buttons for samples
-for name in samples:
-    tk.Button(root, text=f"Play {name}", command=lambda n=name: play_sample(n)).pack()
+# Step Sequencer Grid
+tk.Label(root, text="Step Sequencer").pack()
+grid_frame = tk.Frame(root)
+grid_frame.pack()
+
+grid_buttons = []
+for row, inst in enumerate(instruments):
+    tk.Label(grid_frame, text=inst).grid(row=row, column=0)
+    row_buttons = []
+    for col in range(NUM_STEPS):
+        btn = tk.Button(grid_frame, width=2, bg="white",
+                        command=lambda r=row, c=col: toggle_cell(r, c))
+        btn.grid(row=row, column=col+1)
+        row_buttons.append(btn)
+    grid_buttons.append(row_buttons)
+
+tk.Button(root, text="Play Sequence", command=play_sequence).pack(pady=5)
+
+bpm_slider = tk.Scale(root, from_=60, to=180, orient=tk.HORIZONTAL, label="BPM")
+bpm_slider.set(120)
+bpm_slider.pack()
 
 # Synth controls
 tk.Label(root, text="Synth Frequency (Hz)").pack()
@@ -90,5 +117,5 @@ tk.Button(root, text="Export Beat", command=export_beat).pack()
 for name in samples:
     tk.Button(root, text=f"Upload {name}", command=lambda n=name: upload_sample(n)).pack()
 
-# Run GUI
 root.mainloop()
+
